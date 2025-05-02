@@ -6,6 +6,7 @@
     file_to_search_for: .asciiz "x16emu.exe"
 
 .segment "CODE"
+
     jsr get_cluster_nr
     
     ;r10 to r10+3 = $FFFFFFFF if no match, else = cluster nr
@@ -42,9 +43,17 @@
     jsr dbg_chrout
     lda sd_cmd_tmp
     jsr dbg_chrout
+    
+    jsr sd_is_contineous_sequence
+    bcs file_is_not_in_sequence
+    lda #'1'
+    jsr CHROUT
 rts
     
-
+file_is_not_in_sequence:
+    lda #'0'
+    jsr CHROUT
+rts
 
 
 get_cluster_nr:

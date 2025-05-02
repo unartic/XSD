@@ -33,7 +33,8 @@ FAT32_START_PARTITION_TABLE = $01BE
 
 
     cnt:    .res 1
-
+    cluster_cnt:    .res 4
+    next_cluster:   .res 4
 
     sd_sector_count: .res 1
     sd_current_cluster: .res 4      ;starting cluster of sequense to read
@@ -60,6 +61,7 @@ FAT32_START_PARTITION_TABLE = $01BE
     fat32_LBAstart: .res 4
     
     
+    
 .segment "ZEROPAGE"
     sd_cmd:     .res 6
     sd_cmd_tmp: .res 4
@@ -83,11 +85,106 @@ sd_init_files_list:
     lda #(255-13)   ;lfn entries are stored backwards
     sta sd_lfn_buffer_index
     rts
+    
+    
+;----------------------------------------------------------------------
+; Expects:
+; - that 'sd_init' is called first
+; - sd_current_cluster -> 32 bit clusternumber of the first cluster of the sequence
+; Returns:
+; - carry clear: sequence is continuous
+; - carry set: sequence is not continuous
+;----------------------------------------------------------------------
+sd_is_contineous_sequence:
+    lda sd_current_cluster
+    sta next_cluster
+    lda sd_current_cluster+1
+    sta next_cluster+1
+    lda sd_current_cluster+2
+    sta next_cluster+2
+    lda sd_current_cluster+3
+    sta next_cluster+3
+    
+    :
+        
+       ; jsr print_cluster_nr
+        jsr get_next_cluster_from_fat
+        jsr inc_next_cluster
+
+
+        jsr sd_is_end_of_sequence
+        bcs eos2
+        jsr cmp_cluster_nrs
+        bcs not_in_sequence
+                
+        bra :-
+    eos2:
+    clc
+    rts      
+
+    not_in_sequence:
+    lda #'q'
+    jsr dbg_char
+    sec
+    rts
+
+cmp_cluster_nrs:
+    lda sd_current_cluster
+    cmp next_cluster
+    bne not_the_same
+    lda sd_current_cluster+1
+    cmp next_cluster+1
+    bne not_the_same
+    lda sd_current_cluster+2
+    cmp next_cluster+2
+    bne not_the_same
+    lda sd_current_cluster+3
+    cmp next_cluster+3
+    bne not_the_same  
+    clc
+    rts          
+
+not_the_same:
+    sec
+    rts
+
+inc_next_cluster:
+  clc
+    lda next_cluster
+    adc #1
+    sta next_cluster
+    lda next_cluster+1
+    adc #0
+    sta next_cluster+1
+    lda next_cluster+2
+    adc #0
+    sta next_cluster+2
+    lda next_cluster+3
+    adc #0
+    sta next_cluster+3
+    rts
+
+print_cluster_nr:
+    lda sd_current_cluster+3
+    jsr dbg
+    lda sd_current_cluster+2
+    jsr dbg
+    lda sd_current_cluster+1
+    jsr dbg
+    lda sd_current_cluster
+    jsr dbg
+    jsr dbg_lf
+    
+    
+    rts
 
 goto_read_next_sector:  jmp read_next_sector
 goto_at_end_if_files_list_3:    jmp at_end_if_files_list_3
 goto_to_next_file:  jmp to_next_file
 goto_entry_is_lfn:  jmp entry_is_lfn
+
+
+
 
 ;----------------------------------------------------------------------
 ; Expects:
@@ -540,24 +637,11 @@ cluster_to_sector:
 
 
 
-goto_continue_read: jmp continue_read
 
 
-;--------------------------------
-; Read the next sector of a sequence. A sequence can be a directory listing or the content of a file
-; 
-; If 'SectorsPerCluster'>1 then we read sequential sectors. Else, we find the next clusternr in fat1
-; 
-; TODO: calculations can be optimized
-;--------------------------------
-read_sequence:
-    lda sd_sector_count
-    cmp fat32_SecPerClus
-    bne goto_continue_read
 
-    ;Get next clusternr from FAT
-    ;Fat Entry = LBAStart + ReservedSectors + (current cluster * 4)
-    prntDebug CAP_Cluster,sd_current_cluster,4
+get_next_cluster_from_fat:
+   prntDebug CAP_Cluster,sd_current_cluster,4
     
     stz32Bit sd_cmd_tmp
 
@@ -625,6 +709,52 @@ read_sequence:
             iny
             cpy #4
             bne :- 
+    rts
+
+sd_is_end_of_sequence:
+    ;check for and of sequense: TODO: optimize!!!s
+    lda sd_current_cluster+3
+    cmp #$0F
+    bne not_end_of_sequence2
+    lda sd_current_cluster+2
+    cmp #$FF
+    bne not_end_of_sequence2
+    lda sd_current_cluster+1
+    cmp #$FF
+    bne not_end_of_sequence2
+    lda sd_current_cluster
+    cmp #$FF
+    beq is_end_of_sequence2
+    cmp #$F8
+    beq is_end_of_sequence2
+    
+    bra not_end_of_sequence
+    is_end_of_sequence2:
+    sec
+    rts
+    
+    not_end_of_sequence2:
+    clc
+    rts
+
+goto_continue_read: jmp continue_read
+
+;--------------------------------
+; Read the next sector of a sequence. A sequence can be a directory listing or the content of a file
+; 
+; If 'SectorsPerCluster'>1 then we read sequential sectors. Else, we find the next clusternr in fat1
+; 
+; TODO: calculations can be optimized
+;--------------------------------
+read_sequence:
+    lda sd_sector_count
+    cmp fat32_SecPerClus
+    bne goto_continue_read
+
+    ;Get next clusternr from FAT
+    ;Fat Entry = LBAStart + ReservedSectors + (current cluster * 4)
+    jsr get_next_cluster_from_fat
+
 
     ;check for and of sequense: TODO: optimize!!!s
     lda sd_current_cluster+3
@@ -670,7 +800,7 @@ read_sequence:
 
 
 ;------------------------------
-; Reads sectornr from CMD info (r1)
+; Reads sectornr from CMD into (r1)
 ;------------------------------
 read_sector:
     jsr send_spi_cmd

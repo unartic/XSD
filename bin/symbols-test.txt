@@ -5,9 +5,9 @@ al 000000 .__ZP_FILEOFFS__
 al 00002C .__ZP_LAST__
 al 00005E .__ZP_SIZE__
 al 000022 .__ZP_START__
-al 000602 .sd_current_cluster
-al 000BB2 .sd_get_next_file
-al 000D02 .sd_init
-al 000B91 .sd_init_files_list
+al 00060A .sd_current_cluster
+al 000C53 .sd_get_next_file
+al 000DA3 .sd_init
+al 000B9D .sd_init_files_list
 al 00080D .Start
 al 00080B .Next
