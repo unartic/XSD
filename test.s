@@ -4,31 +4,34 @@
     file_buffer_start_filename   = file_buffer+2
     
     file_to_search_for: .asciiz "x16emu.exe"
+    
+    tmp_buffer:     .res 4
 
 .segment "CODE"
-
+;jsr show_files_list
+;rts
     jsr get_cluster_nr
     
-    ;r10 to r10+3 = $FFFFFFFF if no match, else = cluster nr
-    lda r10+3
+    ;tmp_buffer to tmp_buffer+3 = $FFFFFFFF if no match, else = cluster nr
+    lda tmp_buffer+3
     jsr dbg_chrout
-    lda r10+2
+    lda tmp_buffer+2
     jsr dbg_chrout
-    lda r10+1
+    lda tmp_buffer+1
     jsr dbg_chrout
-    lda r10
+    lda tmp_buffer
     jsr dbg_chrout
     lda #$0d
     jsr CHROUT
     
-    ;copy r10 to sd_current_cluster for conversion from cluster to sector
-    lda r10
+    ;copy tmp_buffer to sd_current_cluster for conversion from cluster to sector
+    lda tmp_buffer
     sta sd_current_cluster
-    lda r10+1
+    lda tmp_buffer+1
     sta sd_current_cluster+1
-    lda r10+2
+    lda tmp_buffer+2
     sta sd_current_cluster+2
-    lda r10+3
+    lda tmp_buffer+3
     sta sd_current_cluster+3
     
     stz sd_sector_count
@@ -61,10 +64,10 @@ get_cluster_nr:
     
     ;all $FF's indicates, file not found
     lda #$FF
-    sta r10
-    sta r10+1
-    sta r10+2
-    sta r10+3
+    sta tmp_buffer
+    sta tmp_buffer+1
+    sta tmp_buffer+2
+    sta tmp_buffer+3
 
 
     jsr sd_init  ;init sd-card
@@ -75,9 +78,9 @@ get_cluster_nr:
 
     ;set location to store filename info
     lda #<file_buffer
-    sta r5
+    sta x16_bit_reg3
     lda #>file_buffer
-    sta r5+1
+    sta x16_bit_reg3+1
     
     list_loop:
      
@@ -115,7 +118,7 @@ get_cluster_nr:
         ldx #0
         :
             lda file_buffer,y
-            sta r10,x
+            sta tmp_buffer,x
             iny
             inx
             cpx #4
@@ -147,9 +150,9 @@ show_files_list:
     
     ;set location to store filename info
     lda #<file_buffer
-    sta r5
+    sta x16_bit_reg3
     lda #>file_buffer
-    sta r5+1
+    sta x16_bit_reg3+1
     
     file_list_loop:
         jsr sd_get_next_file

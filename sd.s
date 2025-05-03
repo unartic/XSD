@@ -5,6 +5,12 @@
 .export sd_get_next_file
 .export sd_init
 
+;Change these to any zp-adressen you have free
+x16_bit_reg1 = r0
+x16_bit_reg2 = r1
+x16_bit_reg3 = r5
+
+
 SHOW_DEBUG = 0
 
 SPI_CTRL = $9F3F
@@ -26,8 +32,7 @@ VBR_RootCluster = $2c
 
 FAT32_START_PARTITION_TABLE = $01BE
 
-
-.segment "GOLDENRAM"
+.segment "DATA"
     sd_buffer:      .res 256
     sd_buffer_2:    .res 256
 
@@ -60,13 +65,9 @@ FAT32_START_PARTITION_TABLE = $01BE
     fat32_RootClus: .res 4      ;$2C - $2F
     fat32_LBAstart: .res 4
     
-    
-    
-.segment "ZEROPAGE"
+    ;in zero page will give slight performance increase
     sd_cmd:     .res 6
-    sd_cmd_tmp: .res 4
-.segment "DATA"
-
+    sd_cmd_tmp: .res 4    
 .segment "CODE"
 
 .include "inc/x16.s"
@@ -209,10 +210,10 @@ sd_get_next_file:
     sta sd_lfn_buffer_index  
     
     ;copy pointer to keep r5 intact
-    lda r5
-    sta r1
-    lda r5+1
-    sta r1+1
+    lda x16_bit_reg3
+    sta x16_bit_reg2
+    lda x16_bit_reg3+1
+    sta x16_bit_reg2+1
 
 sd_get_next_file_no_reset:    
     lda sd_state
@@ -232,27 +233,27 @@ sd_get_next_file_no_reset:
    
     
     ;Process entry
-    lda (r0)
+    lda (x16_bit_reg1)
     beq goto_at_end_if_files_list_3
     cmp #$E5    ;deleted
     beq goto_to_next_file
 
     ldy #$0B    ;attributes
     
-    lda (r0),y
+    lda (x16_bit_reg1),y
     cmp #$0f
     beq goto_entry_is_lfn
     AND #%00000010  ;check if file is hidden
     bne goto_to_next_file    
          ;entry is short filename, or last one of lfn
         ;assume lfn for now
-        sta (r1)    ;store attribute flags byte
+        sta (x16_bit_reg2)    ;store attribute flags byte
         lda sd_is_lfn
         bne copy_filename_from_lfnbuffer
             ;copy filename from entry
             ldx #0
             :
-                lda (r0),y
+                lda (x16_bit_reg1),y
                 sta sd_lfn_buffer,y
                 iny
                 cpy #11
@@ -271,7 +272,7 @@ sd_get_next_file_no_reset:
         stz cnt
         :
             lda sd_lfn_buffer,x
-            sta (r1),y
+            sta (x16_bit_reg2),y
             inc cnt
             inx
             iny
@@ -281,7 +282,7 @@ sd_get_next_file_no_reset:
             ;store len of filename
             ldy #1
             lda cnt
-            sta (r1),y
+            sta (x16_bit_reg2),y
         ply 
 
         ;add size via low ram buffer
@@ -289,7 +290,7 @@ sd_get_next_file_no_reset:
             ldy #$1c
             ldx #0
             :
-                lda (r0),y
+                lda (x16_bit_reg1),y
                 sta sd_cmd_tmp,x
                 iny
                 inx
@@ -299,7 +300,7 @@ sd_get_next_file_no_reset:
         ldx #0
         :
             lda sd_cmd_tmp,x
-            sta (r1),y
+            sta (x16_bit_reg2),y
             iny
             inx
             cpx #4
@@ -309,24 +310,24 @@ sd_get_next_file_no_reset:
         phy
             ;lo: $1a+$1b, high $14+$15
             ldy #$1a
-            lda (r0),y
+            lda (x16_bit_reg1),y
             sta sd_cmd_tmp
             iny
-            lda (r0),y
+            lda (x16_bit_reg1),y
             sta sd_cmd_tmp+1
             
             ldy #$14
-            lda (r0),y
+            lda (x16_bit_reg1),y
             sta sd_cmd_tmp+2
             iny
-            lda (r0),y
+            lda (x16_bit_reg1),y
             sta sd_cmd_tmp+3
         
         ply
         ldx #0
         :
             lda sd_cmd_tmp,x
-            sta (r1),y
+            sta (x16_bit_reg2),y
             iny
             inx
             cpx #4
@@ -371,25 +372,25 @@ to_next_file:
 at_end_if_files_list_3:
     ;mark no more files
     lda #$FF
-    sta (r1)
+    sta (x16_bit_reg2)
     rts
  
 set_r0_to_entry_counter:
     lda #<sd_buffer
-    sta r0
+    sta x16_bit_reg1
     lda #>sd_buffer
-    sta r0+1
+    sta x16_bit_reg1+1
     
     ldx sd_entry_counter
     beq no_offset
     :
         clc
-        lda r0
+        lda x16_bit_reg1
         adc #32
-        sta r0
-        lda r0+1
+        sta x16_bit_reg1
+        lda x16_bit_reg1+1
         adc #0
-        sta r0+1
+        sta x16_bit_reg1+1
         dex
         bne :-
     no_offset:
@@ -697,14 +698,14 @@ get_next_cluster_from_fat:
         clc
         lda #<sd_buffer
         adc sd_fat_offset
-        sta r0
+        sta x16_bit_reg1
         lda #>sd_buffer
         adc sd_fat_offset+1
-        sta r0+1
+        sta x16_bit_reg1+1
         
         ldy #0
         :
-            lda (r0),y
+            lda (x16_bit_reg1),y
             sta sd_current_cluster,y
             iny
             cpy #4
@@ -800,7 +801,7 @@ read_sequence:
 
 
 ;------------------------------
-; Reads sectornr from CMD into (r1)
+; Reads sectornr from CMD into (x16_bit_reg2)
 ;------------------------------
 read_sector:
     jsr send_spi_cmd
@@ -824,35 +825,35 @@ read_sector:
     ldy #0
     :
         lda SPI_DATA
-        sta (r1),y       
+        sta (x16_bit_reg2),y       
         iny
         bne :- 
-    inc r1+1
+    inc x16_bit_reg2+1
     ;read second 256 bytes
     ldy #0
     :
         lda SPI_DATA
-        sta (r1),y       
+        sta (x16_bit_reg2),y       
         iny
         bne :- 
-    dec r1+1
+    dec x16_bit_reg2+1
 rts
 
 ;Reads sector to sd_buffer
 read_sector_internal:
-    lda r1
+    lda x16_bit_reg2
     pha
-    lda r1+1
+    lda x16_bit_reg2+1
     pha
         lda #<sd_buffer
-        sta r1
+        sta x16_bit_reg2
         lda #>sd_buffer
-        sta r1+1        
+        sta x16_bit_reg2+1        
         jsr read_sector
     pla
-    sta r1+1
+    sta x16_bit_reg2+1
     pla
-    sta r1
+    sta x16_bit_reg2
     rts
   
 

@@ -2,12 +2,12 @@ al 000001 .__EXEHDR__
 al 009F00 .__HIMEM__
 al 000001 .__LOADADDR__
 al 000000 .__ZP_FILEOFFS__
-al 00002C .__ZP_LAST__
+al 000022 .__ZP_LAST__
 al 00005E .__ZP_SIZE__
 al 000022 .__ZP_START__
-al 00060A .sd_current_cluster
+al 00165A .sd_current_cluster
 al 000C53 .sd_get_next_file
-al 000DA3 .sd_init
+al 000DAA .sd_init
 al 000B9D .sd_init_files_list
 al 00080D .Start
 al 00080B .Next
